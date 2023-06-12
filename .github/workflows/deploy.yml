@@ -1,4 +1,4 @@
-name: deploy to ConoHa WING
+name: Deploy to ConoHa WING
 
 on:
   push:
@@ -10,23 +10,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - name: Install Rust
-        uses: actions/setup-rust@v1
-        with:
-          rust-version: stable
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh/
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -t rsa ${{ secrets.REMOTE_HOST }} >> ~/.ssh/known_hosts
+
       - name: Install mdBook
-        run: cargo install mdbook
-      - name: ssh key generate
-        run: echo "$SSH_PRIVATE_KEY" > key && chmod 600 key
-        env:
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-      - name: rsync deployments
-        uses: burnett01/rsync-deployments@5.1
-        with:
-          switches: -avz --delete
-          path: book/
-          remote_path: ${{ secrets.REMOTE_PATH }}
-          remote_host: ${{ secrets.REMOTE_HOST }}
-          remote_user: ${{ secrets.REMOTE_USER }}
-          remote_port: ${{ secrets.REMOTE_PORT }}
-          remote_key: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          curl https://sh.rustup.rs -sSf | sh -s -- -y
+          source $HOME/.cargo/env
+          cargo install mdbook
+
+      - name: Build the book
+        run: mdbook build
+
+      - name: Deploy to ConoHa WING
+        run: |
+          rsync -avz --delete -e "ssh -i ~/.ssh/id_rsa" ./book/ ${{ secrets.REMOTE_USER }}@${{ secrets.REMOTE_HOST }}:${{ secrets.REMOTE_PATH }}
+
